@@ -1,0 +1,40 @@
+#!/bin/sh
+
+set -e
+
+wgetcmd="wget"
+wgetcount=`which wget 2>/dev/null | wc -l`
+if test ! $wgetcount = 1; then
+  echo "Utility wget not found in your PATH."
+  if test `uname` = Darwin; then
+    wgetcmd="curl -L -k -O"
+    echo "Using ftp command instead."
+  elif test `uname` = FreeBSD; then
+    wgetcmd=fetch
+    echo "Using fetch command instead."
+  else
+    exit -1
+  fi
+fi
+
+thirdpartylibs=third-party-0.2.0-linux-x86_64.tar.gz
+
+echo " "
+echo "Running script for downloading Minotaur third-Party libraries and headers"
+echo " "
+
+rm -f blas.tgz
+
+echo "Downloading the files from http://www.mcs.anl.gov..."
+$wgetcmd http://www.mcs.anl.gov/research/projects/minotaur/dist/$thirdpartylibs
+
+echo "Unpacking the source code..."
+tar zxf $thirdpartylibs
+
+echo "Deleting the tar file..."
+rm $thirdpartylibs
+
+echo " "
+echo "Done downloading the source code for Minotaur third-Party libraries and headers."
+echo " "
+
