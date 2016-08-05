@@ -1,4 +1,5 @@
-using BinDeps
+
+            ChangeDirectory(srcdir)using BinDeps
 using Compat
 
 @BinDeps.setup
@@ -18,13 +19,14 @@ srcdir   = joinpath(BinDeps.depsdir(libminotaur),"src",minotaurname)
 provides(SimpleBuild,
     (@build_steps begin
         GetSources(libminotaur)
+        CreateDirectory("build", true)
         @build_steps begin
+            ChangeDirectory(joinpath(patchdir,"build"))
             @build_steps begin
                 ChangeDirectory(patchdir)
                 `./get.Thirdparty`
             end
-            ChangeDirectory(srcdir)
-            `cmake -DALL_EXTERNS_PATH:PATH=$patchdir/third-party .`
+            `cmake -DALL_EXTERNS_PATH:PATH=$patchdir/third-party $srcdir`
             `make install`
         end
     end),
