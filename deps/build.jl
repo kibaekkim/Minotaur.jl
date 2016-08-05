@@ -6,7 +6,7 @@ using Compat
 windllname = "libminotaur-1"
 libminotaur = library_dependency("libminotaur", aliases=[windllname])
 
-minotaurname = "libminotaur-0.2.0"
+minotaurname = "minotaur-0.2.0-src"
 
 provides(Sources, URI("http://www.mcs.anl.gov/research/projects/minotaur/dist/minotaur-0.2.0-src.tar.gz"),
     libminotaur, os = :Unix)
@@ -19,11 +19,11 @@ provides(SimpleBuild,
     (@build_steps begin
         GetSources(libminotaur)
         @build_steps begin
-            ChangeDirectory(srcdir)
             @build_steps begin
                 ChangeDirectory(patchdir)
                 `./get.Thirdparty`
             end
+            ChangeDirectory(srcdir)
             `cmake -DALL_EXTERNS_PATH:PATH=$patchdir/third-party .`
             `make install`
         end
