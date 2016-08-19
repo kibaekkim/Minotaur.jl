@@ -4,8 +4,6 @@
 
 module Minotaur
 
-using StructJuMPSolverInterface
-
 function convert_to_c_idx(indicies)
     for i in 1:length(indicies)
         indicies[i] = indicies[i] - 1
