@@ -14,6 +14,7 @@ type MinotaurMathProgModel <: AbstractNonlinearModel
     inner::MinotaurProblem
     numvar::Int
     numconstr::Int
+    nonlinearObj::Bool
     warmstart::Vector{Float64}
     options
 
@@ -22,6 +23,7 @@ type MinotaurMathProgModel <: AbstractNonlinearModel
         model.options   = options
         model.numvar    = 0
         model.numconstr = 0
+        model.nonlinearObj = false
         model.warmstart = Float64[]
         model
     end
@@ -40,6 +42,8 @@ function loadproblem!(m::KnitroMathProgModel,
                       sense::Symbol,
                       d::AbstractNLPEvaluator)
     m.numvar = numVar
+    m.nonlinearObj = !isobjlinear(d)   # if objective function is nonlinear, return true 
+    
     features = features_available(d)
     has_hessian = (:Hess in features)
     if has_hessian
@@ -99,6 +103,7 @@ function loadproblem!(m::KnitroMathProgModel,
         numVar, numConstr, float(x_l), float(x_u), 
         float(g_lb), float(g_ub), 
         length(Ijac), length(Ihess),
+        sense, nonlinearObj, 1, # TODO: later create a function to return the number of objective functions 
         eval_f_cb, eval_g_cb, eval_grad_f_cb, eval_jac_g_cb, eval_h_cb)
     m.inner.sense = sense
     if !has_hessian
@@ -109,10 +114,14 @@ end
 getsense(m::MinotaurMathProgModel) = m.inner.sense
 numvar(m::MinotaurMathProgModel) = m.numvar
 numconstr(m::MinotaurMathProgModel) = m.numconstr
+variableTypes(m::MinotaurMathProgModel) = m.colCat  # returns types of variables, i.e., Integer, Binary, Continuous 
+
 
 # TODO: Are these not available?
-numlinconstr(m::MinotaurMathProgModel) = 0
-numquadconstr(m::MinotaurMathProgModel) = 0
+numlinconstr(m::MinotaurMathProgModel) = length(m.linconstr)
+numquadconstr(m::MinotaurMathProgModel) = length(m.quadconstr)
+numsosconstr(m::MinotaurMathProgModel) = length(m.sosconstr)
+numnonlinconstr(m::MinotaurMathProgModel) = length(m.nlpdata.nlconstr)
 
 function optimize!(m::MinotaurMathProgModel)
     copy!(m.inner.x, m.warmstart) # set warmstart
