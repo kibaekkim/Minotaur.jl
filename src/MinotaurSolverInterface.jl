@@ -35,7 +35,7 @@ LinearQuadraticModel(s::MinotaurSolver) = NonlinearToLPQPBridge(NonlinearModel(s
 # Begin interface implementation
 
 # generic nonlinear interface
-function loadproblem!(m::KnitroMathProgModel,
+function loadproblem!(m::MinotaurMathProgModel,
                       numVar::Int,
                       numConstr::Int,
                       x_l, x_u, g_lb, g_ub,

@@ -14,6 +14,7 @@
 # Objective nonlinear: false
 # Nonlinear constraints: 0
 
+push!(LOAD_PATH, "/nfs2/gkahvecioglu/Minotaur.jl/src")	# load path to Minotaur.jl
 using JuMP
 using Minotaur
 
