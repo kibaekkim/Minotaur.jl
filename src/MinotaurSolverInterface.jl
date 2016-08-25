@@ -14,6 +14,8 @@ type MinotaurMathProgModel <: AbstractNonlinearModel
     inner::MinotaurProblem
     numvar::Int
     numconstr::Int
+
+    varType::Vector{Int32}
     nonlinearObj::Bool
     warmstart::Vector{Float64}
     options
@@ -28,11 +30,21 @@ type MinotaurMathProgModel <: AbstractNonlinearModel
         model
     end
 end
+
+type MinotaurLinearModel <: AbstractLinearQuadraticModel
+    m::MinotaurMathProgModel
+end
+
 NonlinearModel(s::MinotaurSolver) = MinotaurMathProgModel(;s.options...)
 LinearQuadraticModel(s::MinotaurSolver) = NonlinearToLPQPBridge(NonlinearModel(s))
-
+#LinearQuadraticModel(s::MinotaurSolver) = MinotaurMathProgModel(;s.options...)
 ###############################################################################
 # Begin interface implementation
+#linear quadratic interface 
+function loadproblem!(m::MinotaurMathProgModel, A, collb, colub, obj, rowlb, rowub, sense)
+    @show "linear quadratic model" 
+    m.numconstr, m.nvar = size(A)  
+end
 
 # generic nonlinear interface
 function loadproblem!(m::MinotaurMathProgModel,
@@ -42,8 +54,9 @@ function loadproblem!(m::MinotaurMathProgModel,
                       sense::Symbol,
                       d::AbstractNLPEvaluator)
     m.numvar = numVar
+    m.numconstr = numConstr
     m.nonlinearObj = !isobjlinear(d)   # if objective function is nonlinear, return true 
-    
+      
     features = features_available(d)
     has_hessian = (:Hess in features)
     if has_hessian
@@ -98,12 +111,22 @@ function loadproblem!(m::MinotaurMathProgModel,
     else
         eval_h_cb = nothing
     end
-
+    @show numVar 
+    @show numConstr
+    @show x_l
+    @show x_u
+    @show g_lb
+    @show g_ub
+    @show length(Ihess)
+    @show sense
+    @show m.nonlinearObj
+    @show eval_g_cb
+    @show m.varType
     m.inner = createProblem(
         numVar, numConstr, float(x_l), float(x_u), 
         float(g_lb), float(g_ub), 
-        length(Ijac), length(Ihess),
-        sense, nonlinearObj, 1, # TODO: later create a function to return the number of objective functions 
+        length(Ijac), length(Ihess), sense, m.nonlinearObj,
+        #sense, m.nonlinearObj,# numVar, # TODO: later create a function to return the number of objective functions 
         eval_f_cb, eval_g_cb, eval_grad_f_cb, eval_jac_g_cb, eval_h_cb)
     m.inner.sense = sense
     if !has_hessian
@@ -114,15 +137,15 @@ end
 getsense(m::MinotaurMathProgModel) = m.inner.sense
 numvar(m::MinotaurMathProgModel) = m.numvar
 numconstr(m::MinotaurMathProgModel) = m.numconstr
-variableTypes(m::MinotaurMathProgModel) = m.colCat  # returns types of variables, i.e., Integer, Binary, Continuous 
+#variableTypes(m::MinotaurMathProgModel) = m.colCat  # returns types of variables, i.e., Integer, Binary, Continuous 
 
 
 # TODO: Are these not available?
-numlinconstr(m::MinotaurMathProgModel) = length(m.linconstr)
+#=numlinconstr(m::MinotaurMathProgModel) = length(m.linconstr)
 numquadconstr(m::MinotaurMathProgModel) = length(m.quadconstr)
 numsosconstr(m::MinotaurMathProgModel) = length(m.sosconstr)
 numnonlinconstr(m::MinotaurMathProgModel) = length(m.nlpdata.nlconstr)
-
+=#
 function optimize!(m::MinotaurMathProgModel)
     copy!(m.inner.x, m.warmstart) # set warmstart
     for (name,value) in m.options
@@ -189,3 +212,23 @@ end
 
 getrawsolver(m::MinotaurMathProgModel) = m.inner
 setwarmstart!(m::MinotaurMathProgModel, x) = (m.warmstart = x)
+
+const rev_var_type_map = Dict(
+    :Cont => 'C', 
+    :Bin => 'B',
+    :Int => 'I'
+)
+
+function setvartype!(m::MinotaurMathProgModel,typ::Vector{Symbol})
+    @assert all(x->(x in [:Cont, :Bin, :Int]), typ)
+    m.varType = map(t->rev_var_type_map[t], typ)
+end
+
+# test for linear quadratic 
+
+function setvartype!(m::AbstractLinearQuadraticModel, typ::Vector{Symbol})
+   #m.varType = map(t->rev_var_type_map[t], typ)
+end
+
+freemodel!(m::MinotaurMathProgModel) = freeProblem(m.inner)
+

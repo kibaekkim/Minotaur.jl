@@ -152,10 +152,11 @@ end
 function createProblem(n::Int, m::Int,
     x_L::Vector{Float64}, x_U::Vector{Float64},
     g_L::Vector{Float64}, g_U::Vector{Float64},
-    nzJac::Int, nzHess::Int,
-    objSense::Int, nonlinObj::Bool, numObj::Int, 
+    nzJac::Int, nzHess::Int, objSense::Symbol, nonlinObj::Bool, 
+    #objSense::Symbol, nonlinObj::Bool, 
     eval_f, eval_g, eval_grad_f, eval_jac_g, eval_h = nothing)
-
+  
+    @show "function inputs are received"
     @assert n == length(x_L) == length(x_U)
     @assert m == length(g_L) == length(g_U)
     eval_f_cb = cfunction(eval_f_wrapper,Cint, (Ptr{Float64}, Ptr{Float64}, Ptr{Void}) )
@@ -163,12 +164,18 @@ function createProblem(n::Int, m::Int,
     eval_grad_f_cb = cfunction(eval_grad_f_wrapper, Cint, (Ptr{Float64}, Ptr{Float64}, Ptr{Void}) )
     eval_jac_g_cb = cfunction(eval_jac_g_wrapper, Cint, (Ptr{Float64}, Ptr{Float64}, Ptr{Cint}, Ptr{Cint}, Ptr{Void}))
     eval_h_cb = cfunction(eval_h_wrapper, Cint, (Ptr{Float64}, Ptr{Float64}, Ptr{Float64}, Ptr{Cint}, Ptr{Cint}, Ptr{Void}))
-    
+    @show "callbacks are created"    
+   
     # create Minotaur Environment API  
     env = ccall((:createEnv, "libminotaur_shared"),  Ptr{Void}, ())
-
+    @show env   
+  
+    # if the sense of objective function is minimum, the scalar is 1, ow -1. 
+    #sense = (objSense==:Min) ? 1.0:-1.0
+    #@show sense 
+  
     # load problem parameters to Julia Interface  
-    ccall((:loadJuliaInterface, "libminotaur_shared"), Void, (Ptr{Void}, Cint, Cint, 
+    #=ccall((:loadJuliaInterface, "libminotaur_shared"), Void, (Ptr{Void}, Cint, Cint, 
     Ptr{Float64}, Ptr{Float64},
     Ptr{Float64}, Ptr{Float64}, 
     Cint, Cint, 
@@ -177,8 +184,8 @@ function createProblem(n::Int, m::Int,
     x_L, x_U, 
     g_L, g_U , 
     nzJac, nzHess, 
-    obj_sense, 
-    is_nl_obj, nb_obj)
+    sense, 
+    nonlinObj, numObj)
 
     # set callback functions 
     ccall((:setCallbacks, "libminotaur_shared"), Void, 
@@ -186,12 +193,13 @@ function createProblem(n::Int, m::Int,
                                                  Ptr{Void}, Ptr{Void}, Ptr{Void}), 
                                                  env, eval_f_cb, eval_g_cb, 
                                                  eval_grad_f_cb, eval_jac_g_cb, eval_h_cb)
+=#
+    if env == C_NULL
+        error("Minotaur: Failed to construct problem.")
+    else
+        return(MinotaurProblem(env, n, m, eval_f, eval_g, eval_grad_f, eval_jac_g, eval_h, nzJac, nzHess))
+    end
 
-    #if ret == C_NULL
-        #error("Minotaur: Failed to construct problem.")
-    #else
-        #return(MinotaurProblem(ret, n, m, eval_f, eval_g, eval_grad_f, eval_jac_g, eval_h, nzJac, nzHess))
-    #end
 end
 
 function solveProblem(prob::MinotaurProblem)
