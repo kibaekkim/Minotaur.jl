@@ -10,10 +10,19 @@ immutable MinotaurSolver <: AbstractMathProgSolver
 end
 MinotaurSolver(;kwargs...) = MinotaurSolver(kwargs)
 
-type MinotaurMathProgModel <: AbstractNonlinearModel
-    inner::MinotaurProblem
+type MinotaurMathProgModel <: AbstractMathProgModel
+    #inner::MinotaurProblem
     numvar::Int
     numconstr::Int
+    
+    x_l::Vector{Float64}
+    x_u::Vector{Float64}
+    g_l::Vector{Float64}
+    g_u::Vector{Float64}
+
+    sense::Symbol
+    lin_constrs::Array{Dict{Int, Float64}}
+    lin_obj::Dict{Int, Float64}
 
     varType::Vector{Int32}
     nonlinearObj::Bool
@@ -26,33 +35,45 @@ type MinotaurMathProgModel <: AbstractNonlinearModel
         model.numvar    = 0
         model.numconstr = 0
         model.nonlinearObj = false
+        model.x_l = zeros(0)
+        model.x_u = zeros(0)
+        model.g_l = zeros(0)
+        model.g_u = zeros(0)
+        model.sense = :Min 
         model.warmstart = Float64[]
+	model.lin_constrs = Dict{Int, Float64}[]
+        model.lin_obj = Dict{Int, Float64}()
         model
     end
 end
 
-type MinotaurLinearModel <: AbstractLinearQuadraticModel
-    m::MinotaurMathProgModel
+type MinotaurLinearQuadraticModel <: AbstractLinearQuadraticModel
+    inner::MinotaurMathProgModel
 end
 
-NonlinearModel(s::MinotaurSolver) = MinotaurMathProgModel(;s.options...)
-LinearQuadraticModel(s::MinotaurSolver) = NonlinearToLPQPBridge(NonlinearModel(s))
-#LinearQuadraticModel(s::MinotaurSolver) = MinotaurMathProgModel(;s.options...)
+type MinotaurNonlinearModel <: AbstractNonlinearModel
+    inner::MinotaurMathProgModel
+end
+
+NonlinearModel(s::MinotaurSolver) = MinotaurNonlinearModel(
+    MinotaurMathProgModel(;s.options...)
+)
+
+LinearQuadraticModel(s::MinotaurSolver) = MinotaurLinearQuadraticModel(
+    MinotaurMathProgModel(;s.options...)
+)
+
 ###############################################################################
 # Begin interface implementation
-#linear quadratic interface 
-function loadproblem!(m::MinotaurMathProgModel, A, collb, colub, obj, rowlb, rowub, sense)
-    @show "linear quadratic model" 
-    m.numconstr, m.nvar = size(A)  
-end
 
 # generic nonlinear interface
-function loadproblem!(m::MinotaurMathProgModel,
+function loadproblem!(outer::MinotaurNonlinearModel,
                       numVar::Int,
                       numConstr::Int,
                       x_l, x_u, g_lb, g_ub,
                       sense::Symbol,
                       d::AbstractNLPEvaluator)
+    m = outer.inner 
     m.numvar = numVar
     m.numconstr = numConstr
     m.nonlinearObj = !isobjlinear(d)   # if objective function is nonlinear, return true 
@@ -134,7 +155,50 @@ function loadproblem!(m::MinotaurMathProgModel,
     end
 end
 
+function loadproblem!(outer::MinotaurLinearQuadraticModel, A::AbstractMatrix, 
+			x_l, x_u, c, g_l, g_u, sense::Symbol)
+    m = outer.inner # inner is MinotaurMathProgModel
+    m.numconstr, m.numvar = size(A)
+
+    @assert m.numvar == length(x_l) == length(x_u)
+    @assert m.numconstr == length(g_l) == length(g_u)
+
+    m.x_l, m.x_u = x_l, x_u
+    m.g_l, m.g_u = g_l, g_u
+    
+    # set the sense of objective function
+    setsense!(m, sense)
+    
+    # initiate linear constraints 
+    m.lin_constrs = [Dict{Int, Float64}() for _ in 1:m.numconstr]
+
+    #load matrix A 
+    for var = 1:A.n, k= A.colptr[var] : (A.colptr[var+1]-1)
+        m.lin_constrs[A.rowval[k]][var] = A.nzval[k]
+     end
+
+    # store linear objective function 
+    for (index, val) in enumerate(c)
+        m.lin_obj[index] = val
+    end
+    
+    # check validity of constraint bounds 
+    for j=1:m.numconstr
+        lower = m.g_l[j]
+	upper = m.g_u[j]
+	if lower == -Inf && upper == Inf
+	    error("No bounds on constraint $j provided")
+	end
+    end   
+end
+
 getsense(m::MinotaurMathProgModel) = m.inner.sense
+
+function setsense!(m::MinotaurMathProgModel, sense::Symbol)
+    @assert sense == :Min || sense == :Max
+    m.sense = sense 
+end
+
 numvar(m::MinotaurMathProgModel) = m.numvar
 numconstr(m::MinotaurMathProgModel) = m.numconstr
 #variableTypes(m::MinotaurMathProgModel) = m.colCat  # returns types of variables, i.e., Integer, Binary, Continuous 
@@ -223,12 +287,9 @@ function setvartype!(m::MinotaurMathProgModel,typ::Vector{Symbol})
     @assert all(x->(x in [:Cont, :Bin, :Int]), typ)
     m.varType = map(t->rev_var_type_map[t], typ)
 end
-
-# test for linear quadratic 
-
-function setvartype!(m::AbstractLinearQuadraticModel, typ::Vector{Symbol})
-   #m.varType = map(t->rev_var_type_map[t], typ)
+function setvartype!(m::MinotaurLinearQuadraticModel,typ::Vector{Symbol})
+    @assert all(x->(x in [:Cont, :Bin, :Int]), typ)
+    m.varType = map(t->rev_var_type_map[t], typ)
 end
-
 freemodel!(m::MinotaurMathProgModel) = freeProblem(m.inner)
 
