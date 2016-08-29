@@ -11,7 +11,7 @@ end
 MinotaurSolver(;kwargs...) = MinotaurSolver(kwargs)
 
 type MinotaurMathProgModel <: AbstractMathProgModel
-    #inner::MinotaurProblem
+    internal::MinotaurProblem
     numvar::Int
     numconstr::Int
     
@@ -24,7 +24,7 @@ type MinotaurMathProgModel <: AbstractMathProgModel
     lin_constrs::Array{Dict{Int, Float64}}
     lin_obj::Dict{Int, Float64}
 
-    varType::Vector{Int32}
+    varType::Vector{Char}
     nonlinearObj::Bool
     warmstart::Vector{Float64}
     options
@@ -43,6 +43,7 @@ type MinotaurMathProgModel <: AbstractMathProgModel
         model.warmstart = Float64[]
 	model.lin_constrs = Dict{Int, Float64}[]
         model.lin_obj = Dict{Int, Float64}()
+        model.varType = Char[]
         model
     end
 end
@@ -143,15 +144,13 @@ function loadproblem!(outer::MinotaurNonlinearModel,
     @show m.nonlinearObj
     @show eval_g_cb
     @show m.varType
-    m.inner = createProblem(
+    m.internal = createProblem(
         numVar, numConstr, float(x_l), float(x_u), 
         float(g_lb), float(g_ub), 
-        length(Ijac), length(Ihess), sense, m.nonlinearObj,
-        #sense, m.nonlinearObj,# numVar, # TODO: later create a function to return the number of objective functions 
+        length(Ijac), length(Ihess), sense, m.nonlinearObj, 
         eval_f_cb, eval_g_cb, eval_grad_f_cb, eval_jac_g_cb, eval_h_cb)
-    m.inner.sense = sense
     if !has_hessian
-        addOption(m.inner, "hessian_approximation", "limited-memory")
+        addOption(m.internal, "hessian_approximation", "limited-memory")
     end
 end
 
@@ -189,7 +188,10 @@ function loadproblem!(outer::MinotaurLinearQuadraticModel, A::AbstractMatrix,
 	if lower == -Inf && upper == Inf
 	    error("No bounds on constraint $j provided")
 	end
-    end   
+    end 
+    Ijac = Int[]
+    Ihess = Int[]
+    
 end
 
 getsense(m::MinotaurMathProgModel) = m.inner.sense
@@ -211,7 +213,8 @@ numsosconstr(m::MinotaurMathProgModel) = length(m.sosconstr)
 numnonlinconstr(m::MinotaurMathProgModel) = length(m.nlpdata.nlconstr)
 =#
 function optimize!(m::MinotaurMathProgModel)
-    copy!(m.inner.x, m.warmstart) # set warmstart
+    @show m.varType
+    #= copy!(m.inner.x, m.warmstart) # set warmstart
     for (name,value) in m.options
         sname = string(name)
         if match(r"(^resto_)", sname) != nothing
@@ -219,7 +222,7 @@ function optimize!(m::MinotaurMathProgModel)
         end
         addOption(m.inner, sname, value)
     end
-    solveProblem(m.inner)
+    solveProblem(m.inner)=#
 end
 
 function status(m::MinotaurMathProgModel)
@@ -287,9 +290,16 @@ function setvartype!(m::MinotaurMathProgModel,typ::Vector{Symbol})
     @assert all(x->(x in [:Cont, :Bin, :Int]), typ)
     m.varType = map(t->rev_var_type_map[t], typ)
 end
-function setvartype!(m::MinotaurLinearQuadraticModel,typ::Vector{Symbol})
-    @assert all(x->(x in [:Cont, :Bin, :Int]), typ)
-    m.varType = map(t->rev_var_type_map[t], typ)
-end
+
 freemodel!(m::MinotaurMathProgModel) = freeProblem(m.inner)
 
+# Wrapper functions 
+for f in [:optimize!]
+    @eval $f(m::MinotaurNonlinearModel) = $f(m.inner)
+    @eval $f(m::MinotaurLinearQuadraticModel) = $f(m.inner)
+end
+
+for f in [:setvartype!]
+    @eval $f(m::MinotaurNonlinearModel, x) = $f(m.inner, x)
+    @eval $f(m::MinotaurLinearQuadraticModel,x) = $f(m.inner, x)
+end
