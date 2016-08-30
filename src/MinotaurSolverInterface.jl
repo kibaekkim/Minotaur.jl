@@ -14,6 +14,7 @@ type MinotaurMathProgModel <: AbstractMathProgModel
     internal::MinotaurProblem
     numvar::Int
     numconstr::Int
+    numObj::Int # number of objective functions - multi objective 
     
     x_l::Vector{Float64}
     x_u::Vector{Float64}
@@ -34,6 +35,7 @@ type MinotaurMathProgModel <: AbstractMathProgModel
         model.options   = options
         model.numvar    = 0
         model.numconstr = 0
+	model.numObj = 0
         model.nonlinearObj = false
         model.x_l = zeros(0)
         model.x_u = zeros(0)
@@ -175,7 +177,9 @@ function loadproblem!(outer::MinotaurLinearQuadraticModel, A::AbstractMatrix,
     for var = 1:A.n, k= A.colptr[var] : (A.colptr[var+1]-1)
         m.lin_constrs[A.rowval[k]][var] = A.nzval[k]
      end
-
+    
+    m.nonlinearObj = false 
+    m.numObj = 1
     # store linear objective function 
     for (index, val) in enumerate(c)
         m.lin_obj[index] = val
@@ -189,9 +193,15 @@ function loadproblem!(outer::MinotaurLinearQuadraticModel, A::AbstractMatrix,
 	    error("No bounds on constraint $j provided")
 	end
     end 
+    
     Ijac = Int[]
     Ihess = Int[]
-    
+    m.internal = createProblem(
+        m.numvar, m.numconstr, float(x_l), float(x_u), 
+        float(g_l), float(g_u), 
+        length(Ijac), length(Ihess), sense, m.nonlinearObj, m.numObj)
+  
+
 end
 
 getsense(m::MinotaurMathProgModel) = m.inner.sense
@@ -213,7 +223,8 @@ numsosconstr(m::MinotaurMathProgModel) = length(m.sosconstr)
 numnonlinconstr(m::MinotaurMathProgModel) = length(m.nlpdata.nlconstr)
 =#
 function optimize!(m::MinotaurMathProgModel)
-    @show m.varType
+    
+    m.internal.status = :NotOptimized
     #= copy!(m.inner.x, m.warmstart) # set warmstart
     for (name,value) in m.options
         sname = string(name)
@@ -221,15 +232,17 @@ function optimize!(m::MinotaurMathProgModel)
             sname = replace(sname, r"(^resto_)", "resto.")
         end
         addOption(m.inner, sname, value)
-    end
-    solveProblem(m.inner)=#
+    end=#
+    solveProblem(m.internal)
 end
 
 function status(m::MinotaurMathProgModel)
     # Map all the possible return codes, as enumerated in
     # Ipopt.ApplicationReturnStatus, to the MPB statuses:
     # :Optimal, :Infeasible, :Unbounded, :UserLimit, and :Error
-    stat_sym = ApplicationReturnStatus[m.inner.status]
+ 
+    stat_sym = m.internal.status
+    @show stat_sym
     if  stat_sym == :Solve_Succeeded ||
         stat_sym == :Solved_To_Acceptable_Level
         return :Optimal
@@ -294,7 +307,7 @@ end
 freemodel!(m::MinotaurMathProgModel) = freeProblem(m.inner)
 
 # Wrapper functions 
-for f in [:optimize!]
+for f in [:optimize!,:status]
     @eval $f(m::MinotaurNonlinearModel) = $f(m.inner)
     @eval $f(m::MinotaurLinearQuadraticModel) = $f(m.inner)
 end

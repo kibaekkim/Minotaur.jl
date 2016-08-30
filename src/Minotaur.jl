@@ -17,13 +17,14 @@ type MinotaurProblem
     x::Vector{Float64} # starting and final solution
     g::Vector{Float64} # final constraint valaue
     obj_val::Float64 # final objective
-    status::Int # final status
+    status::Symbol # final status
 
     # Callbacks
-    eval_f::Function
-    eval_g::Function
-    eval_grad_f::Function
-    eval_jac_g::Function
+    # TODO: can be nothing for linearquadratic since we don't get NLPevaluator 
+    eval_f
+    eval_g
+    eval_grad_f
+    eval_jac_g
     eval_h  # Can be nothing
     
     #jac , hess
@@ -36,9 +37,11 @@ type MinotaurProblem
     function MinotaurProblem(
         ref::Ptr{Void}, n, m, 
         eval_f, eval_g, eval_grad_f, eval_jac_g, eval_h, nzJac, nzHess)
-        prob = new(ref, n, m, zeros(Float64, n), zeros(Float64, m), 0.0, 0,
+       
+        prob = new(ref, n, m, zeros(Float64, n), zeros(Float64, m), 0.0, :NotOptimized,
         eval_f, eval_g, eval_grad_f, eval_jac_g, eval_h, nzJac, nzHess,
         :Min)
+      
         # Free the internal MinotaurProblem structure when
         # the Julia MinotaurProblem instance goes out of scope
         finalizer(prob, freeProblem)
@@ -47,8 +50,10 @@ type MinotaurProblem
     end
 end
 
-ApplicationReturnStatus = Dict(
-0=>:Solve_Succeeded)
+#TODO: return status itself is symbol, not integer at the moment 
+#=ApplicationReturnStatus = Dict(
+0=>:Solve_Succeeded,
+999=>:NotOptimized)=# #TODO: no solve function is active, so for now we have this 
 
 ###########################################################################
 # Callback wrappers
@@ -152,11 +157,9 @@ end
 function createProblem(n::Int, m::Int,
     x_L::Vector{Float64}, x_U::Vector{Float64},
     g_L::Vector{Float64}, g_U::Vector{Float64},
-    nzJac::Int, nzHess::Int, objSense::Symbol, nonlinObj::Bool, 
-    #objSense::Symbol, nonlinObj::Bool, 
-    eval_f, eval_g, eval_grad_f, eval_jac_g, eval_h = nothing)
+    nzJac::Int, nzHess::Int, objSense::Symbol, nonlinObj::Bool, numObj::Int,
+    eval_f=nothing, eval_g=nothing, eval_grad_f=nothing, eval_jac_g=nothing, eval_h = nothing)
   
-    @show "function inputs are received"
     @assert n == length(x_L) == length(x_U)
     @assert m == length(g_L) == length(g_U)
     eval_f_cb = cfunction(eval_f_wrapper,Cint, (Ptr{Float64}, Ptr{Float64}, Ptr{Void}) )
@@ -164,37 +167,34 @@ function createProblem(n::Int, m::Int,
     eval_grad_f_cb = cfunction(eval_grad_f_wrapper, Cint, (Ptr{Float64}, Ptr{Float64}, Ptr{Void}) )
     eval_jac_g_cb = cfunction(eval_jac_g_wrapper, Cint, (Ptr{Float64}, Ptr{Float64}, Ptr{Cint}, Ptr{Cint}, Ptr{Void}))
     eval_h_cb = cfunction(eval_h_wrapper, Cint, (Ptr{Float64}, Ptr{Float64}, Ptr{Float64}, Ptr{Cint}, Ptr{Cint}, Ptr{Void}))
-    @show "callbacks are created"    
-   
+    
     # create Minotaur Environment API  
     env = ccall((:createEnv, "libminotaur_shared"),  Ptr{Void}, ())
     @show env   
   
     # if the sense of objective function is minimum, the scalar is 1, ow -1. 
-    #sense = (objSense==:Min) ? 1.0:-1.0
-    #@show sense 
-  
+    sense = (objSense==:Min) ? 1:-1 
+    
     # load problem parameters to Julia Interface  
-    #=ccall((:loadJuliaInterface, "libminotaur_shared"), Void, (Ptr{Void}, Cint, Cint, 
+    ccall((:loadJuliaInterface, "libminotaur_shared"), Void, (Ptr{Void}, Cint, Cint, 
     Ptr{Float64}, Ptr{Float64},
     Ptr{Float64}, Ptr{Float64}, 
     Cint, Cint, 
-    Cint, Cint), 
+    Cint, Cuchar, Cint), 
     env, n, m, 
     x_L, x_U, 
     g_L, g_U , 
     nzJac, nzHess, 
-    sense, 
-    nonlinObj, numObj)
-
+    sense, nonlinObj, numObj)
+    
     # set callback functions 
-    ccall((:setCallbacks, "libminotaur_shared"), Void, 
+    #=ccall((:setCallbacks, "libminotaur_shared"), Void, 
                                                 (Ptr{Void}, Ptr{Void}, Ptr{Void},
                                                  Ptr{Void}, Ptr{Void}, Ptr{Void}), 
                                                  env, eval_f_cb, eval_g_cb, 
                                                  eval_grad_f_cb, eval_jac_g_cb, eval_h_cb)
 =#
-    if env == C_NULL
+   if env == C_NULL
         error("Minotaur: Failed to construct problem.")
     else
         return(MinotaurProblem(env, n, m, eval_f, eval_g, eval_grad_f, eval_jac_g, eval_h, nzJac, nzHess))
@@ -206,12 +206,12 @@ function solveProblem(prob::MinotaurProblem)
     # @show "solveProblem"    
     
     final_objval = [0.0]
-    ret = ccall((:solveProblem,"libminotaur_shared"), Cint, 
+    #=ret = ccall((:solveProblem,"libminotaur_shared"), Cint, 
             (Ptr{Void}, Ptr{Float64}, Ptr{Float64}, Any),
             prob.ref, final_objval, prob.x, prob)
     prob.obj_val = final_objval[1]
-    prob.status = Int(ret)
-
+    prob.status = Int(ret)=#
+    prob.status=:NotSolved
     return prob.status
 end
 
