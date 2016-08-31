@@ -1,6 +1,6 @@
 # Standard interface
 importall MathProgBase.SolverInterface
-
+import MathProgBase
 
 ###############################################################################
 # Solver objects
@@ -23,6 +23,9 @@ type MinotaurMathProgModel <: AbstractMathProgModel
 
     sense::Symbol
     lin_constrs::Array{Dict{Int, Float64}}
+    num_linconstr::Int
+    num_quadconstr::Int
+    num_nonlinconstr::Int
     lin_obj::Dict{Int, Float64}
 
     varType::Vector{Char}
@@ -44,7 +47,10 @@ type MinotaurMathProgModel <: AbstractMathProgModel
         model.sense = :Min 
         model.warmstart = Float64[]
 	model.lin_constrs = Dict{Int, Float64}[]
-        model.lin_obj = Dict{Int, Float64}()
+        model.num_linconstr = 0
+	model.num_quadconstr = 0
+        model.num_nonlinconstr = 0
+	model.lin_obj = Dict{Int, Float64}()
         model.varType = Char[]
         model
     end
@@ -172,19 +178,19 @@ function loadproblem!(outer::MinotaurLinearQuadraticModel, A::AbstractMatrix,
     
     # initiate linear constraints 
     m.lin_constrs = [Dict{Int, Float64}() for _ in 1:m.numconstr]
-
+    
     #load matrix A 
     for var = 1:A.n, k= A.colptr[var] : (A.colptr[var+1]-1)
         m.lin_constrs[A.rowval[k]][var] = A.nzval[k]
      end
-    
+  
     m.nonlinearObj = false 
     m.numObj = 1
     # store linear objective function 
     for (index, val) in enumerate(c)
         m.lin_obj[index] = val
     end
-    
+    @show m.lin_obj
     # check validity of constraint bounds 
     for j=1:m.numconstr
         lower = m.g_l[j]
@@ -196,10 +202,14 @@ function loadproblem!(outer::MinotaurLinearQuadraticModel, A::AbstractMatrix,
     
     Ijac = Int[]
     Ihess = Int[]
+    # number of each type constraints 
+    m.num_linconstr = numlinconstr(m) 
+
     m.internal = createProblem(
         m.numvar, m.numconstr, float(x_l), float(x_u), 
         float(g_l), float(g_u), 
-        length(Ijac), length(Ihess), sense, m.nonlinearObj, m.numObj)
+        length(Ijac), length(Ihess), sense, m.nonlinearObj, m.numObj, 
+	m.num_linconstr, m.num_quadconstr, m.num_nonlinconstr, m.lin_obj)
   
 
 end
@@ -213,15 +223,14 @@ end
 
 numvar(m::MinotaurMathProgModel) = m.numvar
 numconstr(m::MinotaurMathProgModel) = m.numconstr
-#variableTypes(m::MinotaurMathProgModel) = m.colCat  # returns types of variables, i.e., Integer, Binary, Continuous 
 
+# TODO: We would need to implement numquad,sos, and nonlinear 
+numlinconstr(m::MinotaurMathProgModel)=size(m.lin_constrs,1)
 
-# TODO: Are these not available?
-#=numlinconstr(m::MinotaurMathProgModel) = length(m.linconstr)
-numquadconstr(m::MinotaurMathProgModel) = length(m.quadconstr)
-numsosconstr(m::MinotaurMathProgModel) = length(m.sosconstr)
-numnonlinconstr(m::MinotaurMathProgModel) = length(m.nlpdata.nlconstr)
-=#
+#numquadconstr(m::MinotaurMathProgModel) = num_qconstr(m)
+#numsosconstr(m::MinotaurMathProgModel) = length(m.sosconstr)
+#numnonlinconstr(m::MinotaurMathProgModel) = length(m.nlpdata.nlconstr)
+
 function optimize!(m::MinotaurMathProgModel)
     
     m.internal.status = :NotOptimized
