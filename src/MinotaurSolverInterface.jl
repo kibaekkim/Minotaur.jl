@@ -209,7 +209,7 @@ function loadproblem!(outer::MinotaurLinearQuadraticModel, A::AbstractMatrix,
         m.numvar, m.numconstr, float(x_l), float(x_u), 
         float(g_l), float(g_u), 
         length(Ijac), length(Ihess), sense, m.nonlinearObj, m.numObj, 
-	m.num_linconstr, m.num_quadconstr, m.num_nonlinconstr, m.lin_obj)
+	m.num_linconstr, m.num_quadconstr, m.num_nonlinconstr, m.lin_obj, m.lin_constrs)
   
 
 end

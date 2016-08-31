@@ -158,7 +158,8 @@ function createProblem(n::Int, m::Int,
     x_L::Vector{Float64}, x_U::Vector{Float64},
     g_L::Vector{Float64}, g_U::Vector{Float64},
     nzJac::Int, nzHess::Int, objSense::Symbol, nonlinObj::Bool, numObj::Int, 
-    numlinconstr::Int, numquadconstr::Int, numnonlinconstr::Int, linearObj::Dict{Int, Float64},
+    numlinconstr::Int, numquadconstr::Int, numnonlinconstr::Int, 
+    linearObj::Dict{Int, Float64}, linearConstr::Array{Dict{Int, Float64}},
     eval_f=nothing, eval_g=nothing, eval_grad_f=nothing, eval_jac_g=nothing, eval_h = nothing)
   
     @assert n == length(x_L) == length(x_U)
@@ -187,9 +188,11 @@ function createProblem(n::Int, m::Int,
     g_L, g_U , 
     nzJac, nzHess, 
     sense, nonlinObj, numObj)
-    
+    @show m
+	@show linearConstr   
     setlinearobjective(env, linearObj)
-    # set callback functions 
+    setlinearconstraints(env, linearConstr, m)
+    # set callback functions
     #=ccall((:setCallbacks, "libminotaur_shared"), Void, 
                                                 (Ptr{Void}, Ptr{Void}, Ptr{Void},
                                                  Ptr{Void}, Ptr{Void}, Ptr{Void}), 
@@ -213,12 +216,25 @@ function setlinearobjective(env::Ptr{Void},lin_objective::Dict{Int, Float64})
 		end 
 	end
         obj_len = length(coef)
-        @show varidx
-        @show coef
-        @show typeof(coef)
         ccall((:setLinearObj,"libminotaur_shared"), Void, (Ptr{Void}, Ptr{Cint}, Ptr{Cdouble}, Cint),
 							     env, varidx, coef, obj_len) 
     
+end
+
+function setlinearconstraints(env::Ptr{Void}, lin_constr::Array{Dict{Int, Float64}}, numconstr::Int)
+	coef=Vector{Float64}[]
+	varidx=Vector{Int64}[]
+	cons_len=Int32[]
+	for i in 1:numconstr
+		push!(cons_len, length(lin_constr[i]))
+		var_no =[key for key in keys(lin_constr[i])]
+		var_coef =[cc for cc in values(lin_constr[i])]
+		push!(varidx, var_no)
+		push!(coef, var_coef)
+		
+	end
+	#TODO: ccall should be completed 
+	#ccall((:setLinearConstraints,"libminotaur_shared"), Void, (Ptr{Void},Ptr{Cint}, Ptr{Cdouble}, Ptr{Cint}), env, varidx, coef, cons_len)
 end
 function solveProblem(prob::MinotaurProblem)
     # @show "solveProblem"    
