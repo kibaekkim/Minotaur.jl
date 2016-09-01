@@ -223,7 +223,7 @@ end
 
 function setlinearconstraints(env::Ptr{Void}, lin_constr::Array{Dict{Int, Float64}}, numconstr::Int)
 	coef=Vector{Float64}[]
-	varidx=Vector{Int64}[]
+	varidx=Vector{Int32}[]
 	cons_len=Int32[]
 	for i in 1:numconstr
 		push!(cons_len, length(lin_constr[i]))
@@ -233,8 +233,8 @@ function setlinearconstraints(env::Ptr{Void}, lin_constr::Array{Dict{Int, Float6
 		push!(coef, var_coef)
 		
 	end
-	#TODO: ccall should be completed 
-	#ccall((:setLinearConstraints,"libminotaur_shared"), Void, (Ptr{Void},Ptr{Cint}, Ptr{Cdouble}, Ptr{Cint}), env, varidx, coef, cons_len)
+	ccall((:setLinearConstraints,"libminotaur_shared"), Void, (Ptr{Void}, Ptr{Ptr{Cint}}, Ptr{Ptr{Float64}}, Ptr{Cint}),
+									 env, varidx, coef, cons_len)
 end
 function solveProblem(prob::MinotaurProblem)
     # @show "solveProblem"    
