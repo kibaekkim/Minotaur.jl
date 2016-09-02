@@ -158,8 +158,6 @@ function createProblem(n::Int, m::Int,
     x_L::Vector{Float64}, x_U::Vector{Float64},
     g_L::Vector{Float64}, g_U::Vector{Float64},
     nzJac::Int, nzHess::Int, objSense::Symbol, nonlinObj::Bool, numObj::Int, 
-    numlinconstr::Int, numquadconstr::Int, numnonlinconstr::Int, 
-    linearObj::Dict{Int, Float64}, linearConstr::Array{Dict{Int, Float64}},
     eval_f=nothing, eval_g=nothing, eval_grad_f=nothing, eval_jac_g=nothing, eval_h = nothing)
   
     @assert n == length(x_L) == length(x_U)
@@ -177,7 +175,7 @@ function createProblem(n::Int, m::Int,
     # if the sense of objective function is minimum, the scalar is 1, ow -1. 
     sense = (objSense==:Min) ? 1:-1 
     
-    # load problem parameters to Julia Interface  
+    # load very generic parameters to Julia Interface  
     ccall((:setJuliaInterface, "libminotaur_shared"), Void, (Ptr{Void}, Cint, Cint, 
     Ptr{Float64}, Ptr{Float64},
     Ptr{Float64}, Ptr{Float64}, 
@@ -188,25 +186,47 @@ function createProblem(n::Int, m::Int,
     g_L, g_U , 
     nzJac, nzHess, 
     sense, nonlinObj, numObj)
-    @show m
-	@show linearConstr   
-    setlinearobjective(env, linearObj)
-    setlinearconstraints(env, linearConstr, m)
-    # set callback functions
-    #=ccall((:setCallbacks, "libminotaur_shared"), Void, 
+       
+    # set callback functions if hessian and jacobian is provided. 
+    if !(eval_jac_g == nothing && eval_h == nothing)	
+   	 ccall((:setCallbacks, "libminotaur_shared"), Void, 
                                                 (Ptr{Void}, Ptr{Void}, Ptr{Void},
                                                  Ptr{Void}, Ptr{Void}, Ptr{Void}), 
                                                  env, eval_f_cb, eval_g_cb, 
                                                  eval_grad_f_cb, eval_jac_g_cb, eval_h_cb)
-=#
-   if env == C_NULL
+    end
+ 
+    if env == C_NULL
         error("Minotaur: Failed to construct problem.")
     else
         return(MinotaurProblem(env, n, m, eval_f, eval_g, eval_grad_f, eval_jac_g, eval_h, nzJac, nzHess))
     end
 
 end
-function setlinearobjective(env::Ptr{Void},lin_objective::Dict{Int, Float64})
+
+function loadCInterface(prob::MinotaurProblem, 
+			varType::Vector{UInt8}, numlinconstr::Int, numquadconstr::Int, numnonlinconstr::Int, 
+ 			linearObj::Dict{Int, Float64}, linearConstr::Array{Dict{Int, Float64}})
+    
+    env = prob.ref
+    # set variable types, i.e., Cont, Binary, Int
+    @show varType
+    ccall((:setVarTypes, "libminotaur_shared"), Void, (Ptr{Void}, Ptr{UInt8}), env, varType)
+
+    # set number of each constraint type 
+    @show numlinconstr
+    ccall((:setNumConsTypes, "libminotaur_shared"), Void, (Ptr{Void}, Cint, Cint, Cint), env, numlinconstr, numquadconstr, numnonlinconstr)
+ 
+    # unpack linear objective and linear constraints dictionaries as suitable for ccall, and then make ccall 
+    setlinearobjective(env, linearObj)
+    setlinearconstraints(env, linearConstr, prob.m)
+
+    # load Problem now 
+    ccall((:loadProblem, "libminotaur_shared"), Void, (Ptr{Void},), env)
+
+end
+
+function setlinearobjective(env::Ptr{Void}, lin_objective::Dict{Int, Float64})
 	coef= Float64[]
         varidx=Int32[] # Int64 did not work for some reason. weird results 
 	for (key,value) in lin_objective
@@ -236,13 +256,13 @@ function setlinearconstraints(env::Ptr{Void}, lin_constr::Array{Dict{Int, Float6
 	ccall((:setLinearConstraints,"libminotaur_shared"), Void, (Ptr{Void}, Ptr{Ptr{Cint}}, Ptr{Ptr{Float64}}, Ptr{Cint}),
 									 env, varidx, coef, cons_len)
 end
+
 function solveProblem(prob::MinotaurProblem)
-    # @show "solveProblem"    
-    # TODO: construct solveProblem 
-    prob.obj_val = final_objval[1]
-    prob.status = Int(ret)=#
-    prob.status=:NotSolved
-    return prob.status
+    # TODO: still needs to implement problem.status and obj_val
+    # prob.ref : MinotaurApiEnv* 
+    ret = ccall((:solveProblem, "libminotaur_shared"), Cint, (Ptr{Void}, Cdouble, Ptr{Float64}), prob.ref, prob.obj_val, prob.x)
+    # TODO: check Ipopt.jl to build on current structure 
+    return ret
 end
 
 function freeProblem(prob::MinotaurProblem)

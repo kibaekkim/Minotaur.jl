@@ -28,7 +28,7 @@ type MinotaurMathProgModel <: AbstractMathProgModel
     num_nonlinconstr::Int
     lin_obj::Dict{Int, Float64}
 
-    varType::Vector{Char}
+    varType::Vector{UInt8}
     nonlinearObj::Bool
     warmstart::Vector{Float64}
     options
@@ -208,8 +208,7 @@ function loadproblem!(outer::MinotaurLinearQuadraticModel, A::AbstractMatrix,
     m.internal = createProblem(
         m.numvar, m.numconstr, float(x_l), float(x_u), 
         float(g_l), float(g_u), 
-        length(Ijac), length(Ihess), sense, m.nonlinearObj, m.numObj, 
-	m.num_linconstr, m.num_quadconstr, m.num_nonlinconstr, m.lin_obj, m.lin_constrs)
+        length(Ijac), length(Ihess), sense, m.nonlinearObj, m.numObj)
   
 
 end
@@ -231,8 +230,11 @@ numlinconstr(m::MinotaurMathProgModel)=size(m.lin_constrs,1)
 #numsosconstr(m::MinotaurMathProgModel) = length(m.sosconstr)
 #numnonlinconstr(m::MinotaurMathProgModel) = length(m.nlpdata.nlconstr)
 
+
 function optimize!(m::MinotaurMathProgModel)
-    
+    # vartypes should be set by now, so loadInterface 
+    loadCInterface(m.internal, m.varType, m.num_linconstr, m.num_quadconstr, m.num_nonlinconstr, 
+			m.lin_obj, m.lin_constrs)  
     m.internal.status = :NotOptimized
     #= copy!(m.inner.x, m.warmstart) # set warmstart
     for (name,value) in m.options
