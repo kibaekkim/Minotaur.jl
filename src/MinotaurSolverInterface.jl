@@ -1,3 +1,6 @@
+# Author: Gokce Kahvecioglu, Northwestern University 
+# Created on: Aug 2016
+
 # Standard interface
 importall MathProgBase.SolverInterface
 import MathProgBase
@@ -27,6 +30,7 @@ type MinotaurMathProgModel <: AbstractMathProgModel
     num_quadconstr::Int
     num_nonlinconstr::Int
     lin_obj::Dict{Int, Float64}
+    obj_const::Float64		# the constant in the objective function
 
     varType::Vector{UInt8}
     nonlinearObj::Bool
@@ -85,8 +89,18 @@ function loadproblem!(outer::MinotaurNonlinearModel,
     m = outer.inner 
     m.numvar = numVar
     m.numconstr = numConstr
-    m.nonlinearObj = !isobjlinear(d)   # if objective function is nonlinear, return true 
-      
+    m.nonlinearObj = !isobjlinear(d)    # if objective function is nonlinear, return true 
+    m.numObj = 1 			# by default, it's set to 1, but a generic function returning this info is needed in the future.  
+ 
+    m.x_l, m.x_u = x_l, x_u
+    m.g_l, m.g_u = g_l, g_u
+    
+    # set the sense of objective function
+    setsense!(m, sense)
+	
+    # TODO: a function for objective function constant should be implemented! 
+    m. obj_const = 0
+    
     features = features_available(d)
     has_hessian = (:Hess in features)
     if has_hessian
@@ -141,22 +155,13 @@ function loadproblem!(outer::MinotaurNonlinearModel,
     else
         eval_h_cb = nothing
     end
-    @show numVar 
-    @show numConstr
-    @show x_l
-    @show x_u
-    @show g_lb
-    @show g_ub
-    @show length(Ihess)
-    @show sense
-    @show m.nonlinearObj
-    @show eval_g_cb
-    @show m.varType
-    m.internal = createProblem(
-        numVar, numConstr, float(x_l), float(x_u), 
-        float(g_lb), float(g_ub), 
-        length(Ijac), length(Ihess), sense, m.nonlinearObj, 
+
+    m.internal = createProblem(m.numvar, m.numconstr, float(x_l), float(x_u), 
+        float(g_l), float(g_u), 
+        length(Ijac), length(Ihess), 
+        m.sense, m.nonlinearObj, m.numObj, m.obj_const,           
         eval_f_cb, eval_g_cb, eval_grad_f_cb, eval_jac_g_cb, eval_h_cb)
+    
     if !has_hessian
         addOption(m.internal, "hessian_approximation", "limited-memory")
     end
@@ -176,6 +181,9 @@ function loadproblem!(outer::MinotaurLinearQuadraticModel, A::AbstractMatrix,
     # set the sense of objective function
     setsense!(m, sense)
     
+    # TODO: a function for objective function constant should be implemented! 
+    m. obj_const = 0
+
     # initiate linear constraints 
     m.lin_constrs = [Dict{Int, Float64}() for _ in 1:m.numconstr]
     
@@ -183,14 +191,15 @@ function loadproblem!(outer::MinotaurLinearQuadraticModel, A::AbstractMatrix,
     for var = 1:A.n, k= A.colptr[var] : (A.colptr[var+1]-1)
         m.lin_constrs[A.rowval[k]][var] = A.nzval[k]
      end
-  
+    
     m.nonlinearObj = false 
     m.numObj = 1
+    
     # store linear objective function 
     for (index, val) in enumerate(c)
         m.lin_obj[index] = val
     end
-    @show m.lin_obj
+  
     # check validity of constraint bounds 
     for j=1:m.numconstr
         lower = m.g_l[j]
@@ -208,7 +217,7 @@ function loadproblem!(outer::MinotaurLinearQuadraticModel, A::AbstractMatrix,
     m.internal = createProblem(
         m.numvar, m.numconstr, float(x_l), float(x_u), 
         float(g_l), float(g_u), 
-        length(Ijac), length(Ihess), sense, m.nonlinearObj, m.numObj)
+        length(Ijac), length(Ihess), m.sense, m.nonlinearObj, m.numObj, m.obj_const)
   
 
 end

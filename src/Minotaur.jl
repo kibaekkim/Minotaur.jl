@@ -1,4 +1,5 @@
-#
+# Author: Gokce Kahvecioglu, Northwestern University 
+# Created on: Aug 2016
 # Wrapper for the serial Minotaur interface
 #
 
@@ -157,7 +158,7 @@ end
 function createProblem(n::Int, m::Int,
     x_L::Vector{Float64}, x_U::Vector{Float64},
     g_L::Vector{Float64}, g_U::Vector{Float64},
-    nzJac::Int, nzHess::Int, objSense::Symbol, nonlinObj::Bool, numObj::Int, 
+    nzJac::Int, nzHess::Int, objSense::Symbol, nonlinObj::Bool, numObj::Int, obj_const::Float64, 
     eval_f=nothing, eval_g=nothing, eval_grad_f=nothing, eval_jac_g=nothing, eval_h = nothing)
   
     @assert n == length(x_L) == length(x_U)
@@ -180,12 +181,12 @@ function createProblem(n::Int, m::Int,
     Ptr{Float64}, Ptr{Float64},
     Ptr{Float64}, Ptr{Float64}, 
     Cint, Cint, 
-    Cint, Cuchar, Cint), 
+    Cint, Cuchar, Cint, Cdouble), 
     env, n, m, 
     x_L, x_U, 
     g_L, g_U , 
     nzJac, nzHess, 
-    sense, nonlinObj, numObj)
+    sense, nonlinObj, numObj, obj_const)
        
     # set callback functions if hessian and jacobian is provided. 
     if !(eval_jac_g == nothing && eval_h == nothing)	
